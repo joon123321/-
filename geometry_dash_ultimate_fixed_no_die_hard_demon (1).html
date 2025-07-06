@@ -1,0 +1,688 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Geometry Dash 통합 버전 - Hard/Demon 안죽는 버그 수정</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #1a1a1a;
+      color: #ffffff;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      background-image: linear-gradient(to bottom, #1a1a1a, #2c2c2c);
+      overflow: hidden;
+    }
+    h1 {
+      font-size: 3.5em;
+      margin: 0.5em 0;
+      color: #00ffcc;
+      text-shadow: 0 0 15px #00ffcc, 0 0 30px #00cc99;
+      z-index: 12;
+    }
+    .container {
+      width: 100vw;
+      height: 100vh;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background-color: rgba(42, 42, 42, 0.8);
+      z-index: 10;
+      position: relative;
+    }
+    .start-button, .difficulty-button, .shop-button, .skin-button {
+      background-color: #00ffcc;
+      color: #1a1a1a;
+      padding: 15px 30px;
+      font-size: 1.2em;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background-color 0.3s, transform 0.2s, box-shadow 0.3s;
+      margin: 10px;
+      box-shadow: 0 0 10px #00ffcc;
+      z-index: 12;
+    }
+    .start-button:hover, .difficulty-button:hover, .shop-button:hover, .skin-button:hover {
+      background-color: #00cc99;
+      transform: scale(1.05);
+      box-shadow: 0 0 20px #00cc99;
+    }
+    p, ul {
+      font-size: 1.1em;
+      line-height: 1.6;
+      text-align: center;
+      max-width: 800px;
+      z-index: 12;
+      margin: 10px 0;
+    }
+    h2 {
+      color: #00ffcc;
+      font-size: 1.8em;
+      margin-top: 1.5em;
+      text-shadow: 0 0 10px #00ffcc;
+      z-index: 12;
+    }
+    ul {
+      list-style-type: disc;
+      padding-left: 20px;
+    }
+    .progress {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      font-size: 1.5em;
+      color: #ffcc00;
+      text-shadow: 0 0 5px #ffcc00;
+      z-index: 15;
+      background-color: rgba(42, 42, 42, 0.8);
+      padding: 5px 10px;
+      border-radius: 5px;
+    }
+    #gameCanvas {
+      display: none;
+      width: 100vw;
+      height: 100vh;
+      position: fixed;
+      top: 0;
+      left: 0;
+      z-index: 5;
+      filter: drop-shadow(0 0 15px #00ffcc);
+    }
+    .difficulty-selector, .shop {
+      margin: 20px 0;
+      display: flex;
+      gap: 10px;
+      z-index: 12;
+    }
+    #shop {
+      display: none;
+    }
+    .game-over {
+      opacity: 0;
+      transition: opacity 0.5s;
+    }
+    .game-over.show {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+  <div class="progress">0% | 트로피: 0</div>
+  <div class="container" id="menu">
+    <h1>🚀 Geometry Dash 통합 버전 - Hard/Demon 안죽는 버그 수정</h1>
+    <p>난이도를 선택하고 스킨을 구매한 후 게임을 시작하세요!</p>
+    <button class="shop-button" onclick="toggleShop()">상점</button>
+    <div class="difficulty-selector">
+      <button class="difficulty-button" onclick="setDifficulty('easy')">Easy</button>
+      <button class="difficulty-button" onclick="setDifficulty('hard')">Hard</button>
+      <button class="difficulty-button" onclick="setDifficulty('insane')">Insane</button>
+      <button class="difficulty-button" onclick="setDifficulty('demon')">Demon</button>
+      <button class="difficulty-button" onclick="setDifficulty('extreme')">Extreme Demon</button>
+    </div>
+    <div class="shop" id="shop">
+      <h2>스킨 상점</h2>
+      <p>트로피로 스킨을 구매하세요!</p>
+      <button class="skin-button" onclick="buySkin('cyan', 0)">청록 (무료)</button>
+      <button class="skin-button" onclick="buySkin('red', 20)">빨강 (20 트로피)</button>
+      <button class="skin-button" onclick="buySkin('purple', 30)">보라 (30 트로피)</button>
+    </div>
+    <button class="start-button" onclick="startGame()">게임 시작</button>
+    
+    <h2>대규모 업데이트 정보</h2>
+    <p><em>Geometry Dash</em> 2.2는 "Dash" 레벨, 스윙 및 플랫포머 모드, 체크포인트, 상점 등을 추가했습니다.</p>
+    
+    <h2>난이도 및 팁</h2>
+    <p>Easy부터 Extreme Demon까지 선택하세요. 스페이스바로 점프, 포털과 체크포인트를 활용하세요. Extreme Demon은 120Hz 이상 권장.</p>
+    <p><strong>참고</strong>: <a href="https://namu.wiki/w/Geometry%20Dash" style="color: #00ffcc;">나무위키</a></p>
+  </div>
+  <canvas id="gameCanvas"></canvas>
+  <audio id="bgm" loop>
+    <source src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" type="audio/mpeg">
+  </audio>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const bgm = document.getElementById('bgm');
+    let gameStarted = false;
+    let animationFrameId = null;
+    let player = { x: 100, y: 350, width: 30, height: 30, vy: 0, gravity: 0.8, jumpPower: -15, speed: 5, color: '#00ffcc', onPlatform: false };
+    let obstacles = [];
+    let portals = [];
+    let checkpoints = [];
+    let platforms = [];
+    let particles = [];
+    let frameCount = 0;
+    let score = 0;
+    let trophies = 0;
+    let gameOver = false;
+    let difficulty = 'easy';
+    let lastCheckpoint = null;
+    let rhythmTimer = 0;
+    let skins = { 
+      cyan: { color: '#00ffcc', owned: true }, 
+      red: { color: '#ff4444', owned: false }, 
+      purple: { color: '#ff00ff', owned: false } 
+    };
+    let currentSkin = 'cyan';
+
+    // Load saved data
+    function loadGameData() {
+      try {
+        const savedData = localStorage.getItem('geometryDashData');
+        if (savedData) {
+          const data = JSON.parse(savedData);
+          trophies = data.trophies || 0;
+          skins = { ...skins, ...data.skins };
+          currentSkin = data.currentSkin || 'cyan';
+          player.color = skins[currentSkin].color;
+        }
+      } catch (e) {
+        console.log('Error loading game data:', e);
+      }
+      updateProgress();
+    }
+    loadGameData();
+
+    function saveGameData() {
+      try {
+        localStorage.setItem('geometryDashData', JSON.stringify({
+          trophies: trophies,
+          skins: skins,
+          currentSkin: currentSkin
+        }));
+      } catch (e) {
+        console.log('Error saving game data:', e);
+      }
+    }
+
+    // Resize canvas to full screen
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    function setDifficulty(level) {
+      difficulty = level;
+      updateProgress();
+    }
+
+    function toggleShop() {
+      const shop = document.getElementById('shop');
+      shop.style.display = shop.style.display === 'none' ? 'block' : 'none';
+    }
+
+    function buySkin(skin, cost) {
+      if (trophies >= cost && !skins[skin].owned) {
+        skins[skin].owned = true;
+        trophies -= cost;
+        currentSkin = skin;
+        player.color = skins[skin].color;
+        saveGameData();
+        updateProgress();
+        alert(`스킨 ${skin} 구매 완료!`);
+      } else if (skins[skin].owned) {
+        currentSkin = skin;
+        player.color = skins[skin].color;
+        saveGameData();
+        alert(`스킨 ${skin} 선택!`);
+      } else {
+        alert('트로피가 부족합니다!');
+      }
+    }
+
+    function updateProgress() {
+      document.querySelector('.progress').textContent = `${Math.min(Math.floor((score / 2000) * 100), 100)}% (${difficulty}) | 트로피: ${trophies}`;
+    }
+
+    function startGame() {
+      if (gameStarted && animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+      }
+      gameStarted = true;
+      gameOver = false;
+      document.getElementById('menu').style.display = 'none';
+      canvas.style.display = 'block';
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      bgm.currentTime = 0;
+      bgm.play().catch(e => console.log('Audio play failed:', e));
+      resetGame();
+      animationFrameId = requestAnimationFrame(gameLoop);
+    }
+
+    function resetGame() {
+      obstacles = [];
+      portals = [];
+      checkpoints = [];
+      platforms = [];
+      particles = [];
+      score = 0;
+      gameOver = false;
+      player.x = 100;
+      player.y = 350;
+      player.vy = 0;
+      player.gravity = 0.8;
+      player.speed = difficulty === 'extreme' ? 10 : difficulty === 'demon' ? 8 : difficulty === 'insane' ? 7 : difficulty === 'hard' ? 6 : 5;
+      player.color = skins[currentSkin].color;
+      player.onPlatform = false;
+      lastCheckpoint = null;
+      frameCount = 0;
+      rhythmTimer = 0;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      updateProgress();
+    }
+
+    document.addEventListener('keydown', (e) => {
+      if (e.code === 'Space' && !gameOver) {
+        if (player.y >= 350 || player.onPlatform) {
+          player.vy = player.jumpPower;
+          player.onPlatform = false;
+          spawnParticles(player.x + player.width / 2, player.y + player.height, 15, player.color);
+        }
+      }
+    });
+
+    function spawnObstacle() {
+      const isSpike = Math.random() > (difficulty === 'extreme' ? 0.2 : 0.4);
+      if (isSpike) {
+        obstacles.push({
+          type: 'spike',
+          x: canvas.width,
+          y: 380,
+          width: 30,
+          height: 30,
+          rotation: 0,
+          pulse: 0
+        });
+      } else {
+        obstacles.push({
+          type: 'block',
+          x: canvas.width,
+          y: 350,
+          width: 40,
+          height: 50
+        });
+      }
+    }
+
+    function spawnPortal() {
+      const types = ['speed', 'gravity', 'color'];
+      const type = types[Math.floor(Math.random() * types.length)];
+      portals.push({
+        type: type,
+        x: canvas.width,
+        y: 300,
+        width: 20,
+        height: 50,
+        pulse: 0
+      });
+    }
+
+    function spawnCheckpoint() {
+      checkpoints.push({
+        x: canvas.width,
+        y: 350,
+        width: 10,
+        height: 50
+      });
+    }
+
+    function spawnPlatform() {
+      platforms.push({
+        x: canvas.width,
+        y: 300,
+        width: 100,
+        height: 20,
+        moveY: difficulty === 'extreme' ? 70 : difficulty === 'demon' ? 50 : 30,
+        speed: difficulty === 'extreme' ? 3 : difficulty === 'demon' ? 2 : 1,
+        direction: 1
+      });
+    }
+
+    function spawnParticles(x, y, count, color) {
+      for (let i = 0; i < count; i++) {
+        particles.push({
+          x: x,
+          y: y,
+          vx: (Math.random() - 0.5) * 6,
+          vy: (Math.random() - 0.5) * 6,
+          size: Math.random() * 5 + 3,
+          life: 40,
+          color: color
+        });
+      }
+    }
+
+    function checkCollision() {
+      for (let obstacle of obstacles) {
+        // Precise collision detection with slight margin for high-speed stability
+        const playerLeft = player.x;
+        const playerRight = player.x + player.width;
+        const playerTop = player.y;
+        const playerBottom = player.y + player.height;
+        const obstacleLeft = obstacle.x - 2; // Margin for high-speed stability
+        const obstacleRight = obstacle.x + obstacle.width + 2;
+        const obstacleTop = obstacle.y - 2;
+        const obstacleBottom = obstacle.y + obstacle.height + 2;
+
+        if (
+          playerRight > obstacleLeft &&
+          playerLeft < obstacleRight &&
+          playerBottom > obstacleTop &&
+          playerTop < obstacleBottom
+        ) {
+          spawnParticles(player.x + player.width / 2, player.y + player.height / 2, 30, '#ff4444');
+          if (lastCheckpoint) {
+            // Reset player to checkpoint with difficulty-specific settings
+            player.x = lastCheckpoint.x;
+            player.y = 350;
+            player.vy = 0;
+            player.gravity = 0.8;
+            player.speed = difficulty === 'extreme' ? 10 : difficulty === 'demon' ? 8 : difficulty === 'insane' ? 7 : difficulty === 'hard' ? 6 : 5;
+            player.color = skins[currentSkin].color;
+            player.onPlatform = false;
+            spawnParticles(player.x + player.width / 2, player.y + player.height / 2, 15, '#00ffcc');
+          } else {
+            gameOver = true;
+            bgm.pause();
+            return; // Stop further collision checks
+          }
+        }
+      }
+    }
+
+    function checkPortal() {
+      for (let portal of portals) {
+        if (
+          player.x < portal.x + portal.width &&
+          player.x + player.width > portal.x &&
+          player.y < portal.y + portal.height &&
+          player.y + player.height > portal.y
+        ) {
+          if (portal.type === 'speed') {
+            player.speed = Math.min(player.speed + 2, 12);
+            spawnParticles(portal.x + portal.width / 2, portal.y + portal.height / 2, 20, '#ffff00');
+          } else if (portal.type === 'gravity') {
+            player.gravity = player.gravity === 0.8 ? 0.4 : 0.8;
+            spawnParticles(portal.x + portal.width / 2, portal.y + portal.height / 2, 20, '#00ff00');
+          } else if (portal.type === 'color') {
+            player.color = `hsl(${Math.random() * 360}, 100%, 50%)`;
+            spawnParticles(portal.x + portal.width / 2, portal.y + portal.height / 2, 20, player.color);
+          }
+          portals.splice(portals.indexOf(portal), 1);
+        }
+      }
+    }
+
+    function checkCheckpoint() {
+      for (let checkpoint of checkpoints) {
+        if (
+          player.x < checkpoint.x + checkpoint.width &&
+          player.x + player.width > checkpoint.x &&
+          player.y < checkpoint.y + checkpoint.height &&
+          player.y + player.height > checkpoint.y
+        ) {
+          lastCheckpoint = { x: checkpoint.x, y: 350 };
+          spawnParticles(checkpoint.x + checkpoint.width / 2, checkpoint.y + checkpoint.height / 2, 15, '#00ffff');
+          checkpoints.splice(checkpoints.indexOf(checkpoint), 1);
+        }
+      }
+    }
+
+    function checkPlatform() {
+      player.onPlatform = false;
+      for (let platform of platforms) {
+        if (
+          player.x < platform.x + platform.width &&
+          player.x + player.width > platform.x &&
+          player.y + player.height > platform.y &&
+          player.y + player.height < platform.y + 10 &&
+          player.vy >= 0
+        ) {
+          player.y = platform.y - player.height;
+          player.vy = 0;
+          player.onPlatform = true;
+        }
+      }
+    }
+
+    function gameLoop() {
+      if (!gameStarted || gameOver) {
+        if (gameOver) {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.fillStyle = '#ff4444';
+          ctx.font = '40px Arial';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('게임 오버!', canvas.width / 2, canvas.height / 2);
+          ctx.fillText(`최종 점수: ${score}`, canvas.width / 2, canvas.height / 2 + 50);
+          ctx.canvas.classList.add('game-over', 'show');
+          setTimeout(() => {
+            if (animationFrameId) {
+              cancelAnimationFrame(animationFrameId);
+              animationFrameId = null;
+            }
+            ctx.canvas.classList.remove('show');
+            saveGameData();
+            window.location.reload();
+          }, 1000);
+        }
+        return;
+      }
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Draw background
+      ctx.fillStyle = '#222222';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = `rgba(0, 255, 204, ${0.5 + Math.sin(frameCount * 0.05) * 0.3})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, canvas.height / 2);
+      ctx.lineTo(canvas.width, canvas.height / 2);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+      for (let i = 0; i < 50; i++) {
+        ctx.beginPath();
+        ctx.arc(Math.random() * canvas.width - frameCount % 100, Math.random() * (canvas.height - 150), Math.random() * 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = '#444444';
+      ctx.fillRect(0, 350, canvas.width, canvas.height - 350);
+      ctx.fillStyle = `rgba(0, 255, 204, ${0.5 + Math.sin(frameCount * 0.1) * 0.3})`;
+      ctx.fillRect(0, 340, canvas.width, 10);
+
+      // Update player
+      player.vy += player.gravity;
+      player.y += player.vy;
+      if (player.y > 350 && !player.onPlatform) {
+        player.y = 350;
+        player.vy = 0;
+      }
+
+      // Draw player
+      ctx.save();
+      ctx.translate(player.x + player.width / 2, player.y + player.height / 2);
+      ctx.rotate((player.vy * 0.05) % (Math.PI * 2));
+      ctx.fillStyle = player.color;
+      ctx.fillRect(-player.width / 2, -player.height / 2, player.width, player.height);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+      for (let i = 0; i < 4; i++) {
+        for (let j = 0; j < 4; j++) {
+          if ((i + j) % 2 === 0) {
+            ctx.fillRect(-player.width / 2 + i * (player.width / 4), -player.height / 2 + j * (player.height / 4), player.width / 4, player.height / 4);
+          }
+        }
+      }
+      ctx.strokeStyle = '#ffffff';
+      ctx.strokeRect(-player.width / 2, -player.height / 2, player.width, player.height);
+      ctx.restore();
+
+      // Rhythm-based spawning (128 BPM, ~0.47s)
+      rhythmTimer++;
+      const spawnInterval = difficulty === 'extreme' ? 25 : difficulty === 'demon' ? 30 : difficulty === 'insane' ? 35 : difficulty === 'hard' ? 40 : 50;
+      if (rhythmTimer % spawnInterval === 0) {
+        if (Math.random() < (difficulty === 'extreme' ? 0.8 : 0.6)) spawnObstacle();
+        if (Math.random() < 0.3) spawnPortal();
+        if (Math.random() < 0.1) spawnCheckpoint();
+        if (Math.random() < (difficulty === 'extreme' ? 0.3 : 0.2)) spawnPlatform();
+      }
+
+      // Update and draw obstacles
+      for (let i = obstacles.length - 1; i >= 0; i--) {
+        obstacles[i].x -= player.speed;
+        obstacles[i].pulse = (obstacles[i].pulse || 0) + 0.05;
+        if (obstacles[i].type === 'spike') {
+          obstacles[i].rotation += difficulty === 'extreme' ? 0.15 : difficulty === 'demon' ? 0.1 : 0.05;
+          ctx.save();
+          ctx.translate(obstacles[i].x + obstacles[i].width / 2, obstacles[i].y + obstacles[i].height / 2);
+          ctx.rotate(obstacles[i].rotation);
+          ctx.fillStyle = `rgba(255, 68, 68, ${0.8 + Math.sin(obstacles[i].pulse) * 0.2})`;
+          ctx.beginPath();
+          ctx.moveTo(-obstacles[i].width / 2, obstacles[i].height / 2);
+          ctx.lineTo(0, -obstacles[i].height / 2);
+          ctx.lineTo(obstacles[i].width / 2, obstacles[i].height / 2);
+          ctx.fill();
+          ctx.strokeStyle = '#ff6666';
+          ctx.stroke();
+          ctx.restore();
+        } else {
+          ctx.fillStyle = `rgba(255, 68, 68, ${0.8 + Math.sin(obstacles[i].pulse) * 0.2})`;
+          ctx.fillRect(obstacles[i].x, obstacles[i].y, obstacles[i].width, obstacles[i].height);
+          ctx.strokeStyle = '#ff6666';
+          ctx.strokeRect(obstacles[i].x, obstacles[i].y, obstacles[i].width, obstacles[i].height);
+        }
+        if (obstacles[i].x < -obstacles[i].width) {
+          obstacles.splice(i, 1);
+          score += 10;
+          if (score % 100 === 0) {
+            trophies += 1;
+            saveGameData();
+            updateProgress();
+          }
+        }
+      }
+
+      // Update and draw portals
+      for (let portal of portals) {
+        portal.pulse += 0.1;
+        ctx.save();
+        ctx.translate(portal.x + portal.width / 2, portal.y + portal.height / 2);
+        ctx.rotate(portal.pulse);
+        ctx.fillStyle = portal.type === 'speed' ? `rgba(255, 255, 0, ${0.7 + Math.sin(portal.pulse) * 0.3})` : 
+                        portal.type === 'gravity' ? `rgba(0, 255, 0, ${0.7 + Math.sin(portal.pulse) * 0.3})` : 
+                        `rgba(255, 0, 255, ${0.7 + Math.sin(portal.pulse) * 0.3})`;
+        ctx.fillRect(-portal.width / 2, -portal.height / 2, portal.width, portal.height);
+        ctx.strokeStyle = '#ffffff';
+        ctx.strokeRect(-portal.width / 2, -portal.height / 2, portal.width, portal.height);
+        ctx.restore();
+        portal.x -= player.speed;
+        if (portal.x < -portal.width) portals.splice(portals.indexOf(portal), 1);
+      }
+
+      // Update and draw checkpoints
+      for (let checkpoint of checkpoints) {
+        ctx.fillStyle = `rgba(0, 255, 255, ${0.7 + Math.sin(frameCount * 0.1) * 0.3})`;
+        ctx.fillRect(checkpoint.x, checkpoint.y, checkpoint.width, checkpoint.height);
+        checkpoint.x -= player.speed;
+        if (checkpoint.x < -checkpoint.width) checkpoints.splice(checkpoints.indexOf(checkpoint), 1);
+      }
+
+      // Update and draw platforms
+      for (let platform of platforms) {
+        platform.x -= player.speed;
+        platform.y += platform.speed * platform.direction;
+        if (platform.y > 300 + platform.moveY || platform.y < 300 - platform.moveY) platform.direction *= -1;
+        ctx.fillStyle = '#888888';
+        ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
+        ctx.strokeStyle = `rgba(255, 255, 255, ${0.7 + Math.sin(frameCount * 0.1) * 0.3})`;
+        ctx.strokeRect(platform.x, platform.y, platform.width, platform.height);
+        if (platform.x < -platform.width) platforms.splice(platforms.indexOf(platform), 1);
+      }
+
+      // Update and draw particles
+      for (let i = particles.length - 1; i >= 0; i--) {
+        particles[i].x += particles[i].vx;
+        particles[i].y += particles[i].vy;
+        particles[i].life--;
+        particles[i].size *= 0.95;
+        ctx.fillStyle = particles[i].color;
+        ctx.beginPath();
+        ctx.arc(particles[i].x, particles[i].y, particles[i].size, 0, Math.PI * 2);
+        ctx.fill();
+        if (particles[i].life <= 0) particles.splice(i, 1);
+      }
+
+      // Check collisions and other interactions
+      checkPlatform();
+      checkCollision();
+      if (!gameOver) {
+        checkPortal();
+        checkCheckpoint();
+      }
+
+      // Draw score
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '20px Arial';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'top';
+      ctx.fillText(`점수: ${score} | 난이도: ${difficulty} | 트로피: ${trophies}`, canvas.width - 20, 10);
+
+      frameCount++;
+      animationFrameId = requestAnimationFrame(gameLoop);
+    }
+  </script>
+</body>
+</html>
